@@ -1,0 +1,93 @@
+/* ============================================
+   AplicaAI Guide Generator — Design System
+   ============================================ */
+
+:root {
+  --color-primary: #6C3CE1;
+  --color-primary-hover: #5A2DC5;
+  --color-primary-light: rgba(108, 60, 225, 0.08);
+  --color-primary-glow: rgba(108, 60, 225, 0.25);
+
+  --color-accent: #FF6A00;
+  --color-accent-hover: #E55E00;
+  --color-accent-light: rgba(255, 106, 0, 0.08);
+
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #dc2626;
+
+  --bg-primary: #FFFFFF;
+  --bg-secondary: #F8F9FC;
+  --bg-tertiary: #F0F1F5;
+  --bg-dark: #0F0F1A;
+  --bg-dark-lighter: #1A1A2E;
+
+  --text-primary: #111827;
+  --text-secondary: #6B7280;
+  --text-tertiary: #9CA3AF;
+  --text-on-dark: #FFFFFF;
+  --text-on-primary: #FFFFFF;
+
+  --border-light: #E5E7EB;
+  --border-medium: #D1D5DB;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 100px;
+
+  --font-primary: var(--font-primary), 'Inter', -apple-system, sans-serif;
+  --font-heading: var(--font-heading), 'Rajdhani', 'Inter', sans-serif;
+}
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 100%;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  font-family: var(--font-primary);
+  color: var(--text-primary);
+  background: var(--bg-secondary);
+}
+
+img, picture, video, canvas, svg {
+  display: block;
+  max-width: 100%;
+}
+
+input, button, textarea, select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+ul, ol { list-style: none; }
+
+h1, h2, h3, h4, h5, h6 {
+  overflow-wrap: break-word;
+  line-height: 1.2;
+}
