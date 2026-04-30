@@ -32,9 +32,14 @@ export async function GET(request, { params }) {
   const nodeStream = createReadStream(videoPath);
   const stream = new ReadableStream({
     start(controller) {
-      nodeStream.on("data", (chunk) => controller.enqueue(chunk));
+      nodeStream.on("data", (chunk) => {
+        try { controller.enqueue(chunk); } catch { nodeStream.destroy(); }
+      });
       nodeStream.on("end", () => controller.close());
       nodeStream.on("error", (err) => controller.error(err));
+    },
+    cancel() {
+      nodeStream.destroy();
     },
   });
 
