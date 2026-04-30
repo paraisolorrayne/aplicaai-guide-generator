@@ -17,7 +17,7 @@ export async function GET(request, { params }) {
   const publicDir = resolve(process.cwd(), "public");
   const videoPath = resolve(join(process.cwd(), "public", guide.recording.videoUrl));
 
-  if (!videoPath.startsWith(publicDir)) {
+  if (!videoPath.startsWith(publicDir + "/")) {
     return Response.json({ error: "Caminho inválido" }, { status: 403 });
   }
 
