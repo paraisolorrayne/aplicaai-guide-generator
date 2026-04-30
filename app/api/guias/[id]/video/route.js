@@ -1,5 +1,5 @@
 import { getGuideById } from "@/data/guides";
-import { readFileSync, existsSync } from "fs";
+import { createReadStream, existsSync, statSync } from "fs";
 import { join, resolve } from "path";
 
 export async function GET(request, { params }) {
@@ -25,15 +25,24 @@ export async function GET(request, { params }) {
     return Response.json({ error: "Arquivo de vídeo não encontrado" }, { status: 404 });
   }
 
-  const videoBuffer = readFileSync(videoPath);
+  const stat = statSync(videoPath);
   const slug = guide.slug || "guia";
   const fileName = `${slug}-gravacao.webm`;
 
-  return new Response(videoBuffer, {
+  const nodeStream = createReadStream(videoPath);
+  const stream = new ReadableStream({
+    start(controller) {
+      nodeStream.on("data", (chunk) => controller.enqueue(chunk));
+      nodeStream.on("end", () => controller.close());
+      nodeStream.on("error", (err) => controller.error(err));
+    },
+  });
+
+  return new Response(stream, {
     headers: {
       "Content-Type": "video/webm",
       "Content-Disposition": `attachment; filename="${fileName}"`,
-      "Content-Length": videoBuffer.length.toString(),
+      "Content-Length": stat.size.toString(),
     },
   });
 }

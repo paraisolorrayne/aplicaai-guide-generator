@@ -179,8 +179,12 @@ Responda SOMENTE com JSON: { "themes": [...] }`;
         const text = result.choices[0].message.content;
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          return Response.json({ themes: parsed.themes || [], source: "ai" });
+          try {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (parsed.themes?.length > 0) {
+              return Response.json({ themes: parsed.themes, source: "ai" });
+            }
+          } catch { /* fall through to template */ }
         }
       }
     }
