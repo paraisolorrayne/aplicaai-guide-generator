@@ -14,10 +14,15 @@ const recordDir = ${JSON.stringify(recordDir)};
 if (!existsSync(recordDir)) mkdirSync(recordDir, { recursive: true });
 
 async function record() {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+  });
   const context = await browser.newContext({
     recordVideo: { dir: recordDir, size: { width: 1280, height: 720 } },
     viewport: { width: 1280, height: 720 },
+    locale: 'pt-BR',
+    timezoneId: 'America/Sao_Paulo',
   });
   const page = await context.newPage();
 
@@ -26,14 +31,20 @@ async function record() {
       console.log('Step:', step.description || step.action);
       switch (step.action) {
         case 'navigate':
-          await page.goto(step.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+          await page.goto(step.url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {
+            console.log('Navigation timeout, continuing...');
+          });
           break;
         case 'click':
-          await page.click(step.selector, { timeout: 10000 });
+          await page.click(step.selector, { timeout: 10000 }).catch(() => {
+            console.log('Click failed for:', step.selector);
+          });
           break;
         case 'type':
-          if (step.selector) await page.click(step.selector, { timeout: 10000 });
-          await page.keyboard.type(step.text || '', { delay: 50 });
+          if (step.selector) {
+            await page.click(step.selector, { timeout: 10000 }).catch(() => {});
+          }
+          await page.keyboard.type(step.text || '', { delay: 40 });
           break;
         case 'wait':
           await new Promise(r => setTimeout(r, step.duration || 2000));
@@ -45,7 +56,10 @@ async function record() {
           await page.keyboard.press(step.key || 'Enter');
           break;
         case 'screenshot':
-          await page.screenshot({ path: step.path || 'screenshot.png' });
+          const screenshotPath = step.path
+            ? (step.path.startsWith('/') ? step.path : recordDir + '/' + step.path)
+            : recordDir + '/screenshot-' + Date.now() + '.png';
+          await page.screenshot({ path: screenshotPath });
           break;
       }
       await new Promise(r => setTimeout(r, step.pauseAfter || 1500));
@@ -82,7 +96,7 @@ async function runRecording(guideId, steps) {
   const command = "node " + JSON.stringify(scriptFile);
 
   return new Promise((resolve, reject) => {
-    exec(command, { timeout: 120000 }, (error, stdout, stderr) => {
+    exec(command, { timeout: 180000 }, (error, stdout, stderr) => {
       const output = (stdout || "") + (stderr || "");
       const videoMatch = output.match(/VIDEO_PATH:(.+)/);
 
