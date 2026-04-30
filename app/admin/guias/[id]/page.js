@@ -85,11 +85,16 @@ export default function EditGuia({ params }) {
     if ((form.recording?.steps || []).length === 0) return alert("Adicione passos de gravação.");
     setRecording(true);
     try {
-      await fetch(`/api/guias/${id}`, {
+      const saveRes = await fetch(`/api/guias/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
+      if (!saveRes.ok) {
+        alert("Erro ao salvar guia antes de gravar.");
+        setRecording(false);
+        return;
+      }
 
       const res = await fetch("/api/guias/record", {
         method: "POST",

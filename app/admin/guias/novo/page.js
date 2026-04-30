@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import styles from "../../admin.module.css";
 import g from "../guias.module.css";
@@ -33,6 +33,7 @@ export default function NovoGuia() {
   const [generatingSteps, setGeneratingSteps] = useState(false);
   const [saving, setSaving] = useState(false);
   const [recording, setRecording] = useState(false);
+  const savedIdRef = useRef(null);
 
   const [themes, setThemes] = useState([]);
   const [themesLoading, setThemesLoading] = useState(false);
@@ -127,22 +128,38 @@ export default function NovoGuia() {
     setGeneratingSteps(false);
   }
 
+  async function saveGuide() {
+    if (savedIdRef.current) {
+      const res = await fetch(`/api/guias/${savedIdRef.current}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) return null;
+      return { id: savedIdRef.current };
+    }
+    const res = await fetch("/api/guias", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    });
+    if (!res.ok) return null;
+    const saved = await res.json();
+    savedIdRef.current = saved.id;
+    return saved;
+  }
+
   async function handleRecord() {
     if (form.recording.steps.length === 0) return alert("Adicione passos de gravação primeiro.");
     if (!form.title) return alert("Salve o guia antes de gravar.");
     setRecording(true);
     try {
-      const saveRes = await fetch("/api/guias", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      if (!saveRes.ok) {
+      const savedGuide = await saveGuide();
+      if (!savedGuide) {
         alert("Erro ao salvar guia.");
         setRecording(false);
         return;
       }
-      const savedGuide = await saveRes.json();
 
       const res = await fetch("/api/guias/record", {
         method: "POST",
@@ -181,13 +198,9 @@ export default function NovoGuia() {
     if (!form.title) return alert("Informe o título.");
     setSaving(true);
     try {
-      const res = await fetch("/api/guias", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      if (res.ok) router.push("/admin/guias");
-      else alert(`Erro: ${(await res.json()).error}`);
+      const saved = await saveGuide();
+      if (saved) router.push("/admin/guias");
+      else alert("Erro ao salvar guia.");
     } catch (err) { alert(`Erro: ${err.message}`); }
     setSaving(false);
   }

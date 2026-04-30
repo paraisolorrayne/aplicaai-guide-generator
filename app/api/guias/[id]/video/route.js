@@ -1,6 +1,6 @@
 import { getGuideById } from "@/data/guides";
 import { readFileSync, existsSync } from "fs";
-import { join } from "path";
+import { join, resolve } from "path";
 
 export async function GET(request, { params }) {
   const { id } = await params;
@@ -14,7 +14,12 @@ export async function GET(request, { params }) {
     return Response.json({ error: "Nenhuma gravação disponível" }, { status: 404 });
   }
 
-  const videoPath = join(process.cwd(), "public", guide.recording.videoUrl);
+  const publicDir = resolve(process.cwd(), "public");
+  const videoPath = resolve(join(process.cwd(), "public", guide.recording.videoUrl));
+
+  if (!videoPath.startsWith(publicDir)) {
+    return Response.json({ error: "Caminho inválido" }, { status: 403 });
+  }
 
   if (!existsSync(videoPath)) {
     return Response.json({ error: "Arquivo de vídeo não encontrado" }, { status: 404 });
