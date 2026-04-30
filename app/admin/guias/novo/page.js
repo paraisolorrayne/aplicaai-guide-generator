@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import styles from "../../admin.module.css";
 import g from "../guias.module.css";
@@ -28,9 +28,17 @@ const STEP_ACTIONS = [
 
 export default function NovoGuia() {
   const router = useRouter();
-  const [tab, setTab] = useState("info");
+  const [tab, setTab] = useState("themes");
   const [generating, setGenerating] = useState(false);
+  const [generatingSteps, setGeneratingSteps] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const savedIdRef = useRef(null);
+
+  const [themes, setThemes] = useState([]);
+  const [themesLoading, setThemesLoading] = useState(false);
+  const [themeCategory, setThemeCategory] = useState("");
+  const [themeTool, setThemeTool] = useState("");
 
   const [form, setForm] = useState({
     title: "", description: "", difficulty: "Iniciante",
@@ -45,6 +53,40 @@ export default function NovoGuia() {
     const arr = p[field] || [];
     return { ...p, [field]: arr.includes(item) ? arr.filter((i) => i !== item) : [...arr, item] };
   });
+
+  const pipelineStep = !form.title ? 0
+    : !form.content ? 1
+    : form.recording.steps.length === 0 ? 2
+    : form.recording.videoUrl ? 4
+    : 3;
+
+  async function handleGenerateThemes() {
+    setThemesLoading(true);
+    try {
+      const res = await fetch("/api/guias/temas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category: themeCategory, tool: themeTool, count: 6 }),
+      });
+      const data = await res.json();
+      setThemes(data.themes || []);
+    } catch (err) {
+      alert(`Erro: ${err.message}`);
+    }
+    setThemesLoading(false);
+  }
+
+  function selectTheme(theme) {
+    setForm((p) => ({
+      ...p,
+      title: theme.title,
+      description: theme.description,
+      difficulty: theme.difficulty || p.difficulty,
+      categories: theme.categories || p.categories,
+      tools: theme.tool ? [theme.tool] : p.tools,
+    }));
+    setTab("info");
+  }
 
   async function handleGenerate() {
     if (!form.title) return alert("Informe o título primeiro.");
@@ -61,6 +103,78 @@ export default function NovoGuia() {
       setTab("content");
     } catch (err) { alert(`Erro: ${err.message}`); }
     setGenerating(false);
+  }
+
+  async function handleGenerateSteps() {
+    if (!form.content) return alert("Gere o conteúdo antes de gerar os passos de gravação.");
+    setGeneratingSteps(true);
+    try {
+      const res = await fetch("/api/guias/generate-steps", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (data.steps) {
+        setForm((p) => ({
+          ...p,
+          recording: { ...p.recording, steps: data.steps },
+        }));
+        if (data.source === "template") alert("Passos gerados via template. Ajuste conforme necessário.");
+      } else {
+        alert(`Erro: ${data.error}`);
+      }
+    } catch (err) { alert(`Erro: ${err.message}`); }
+    setGeneratingSteps(false);
+  }
+
+  async function saveGuide() {
+    if (savedIdRef.current) {
+      const res = await fetch(`/api/guias/${savedIdRef.current}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      if (!res.ok) return null;
+      return { id: savedIdRef.current };
+    }
+    const res = await fetch("/api/guias", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    });
+    if (!res.ok) return null;
+    const saved = await res.json();
+    savedIdRef.current = saved.id;
+    return saved;
+  }
+
+  async function handleRecord() {
+    if (form.recording.steps.length === 0) return alert("Adicione passos de gravação primeiro.");
+    if (!form.title) return alert("Salve o guia antes de gravar.");
+    setRecording(true);
+    try {
+      const savedGuide = await saveGuide();
+      if (!savedGuide) {
+        alert("Erro ao salvar guia.");
+        setRecording(false);
+        return;
+      }
+
+      const res = await fetch("/api/guias/record", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ guideId: savedGuide.id }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert("Gravação concluída! O vídeo foi anexado ao guia.");
+        router.push("/admin/guias");
+      } else {
+        alert(`Erro na gravação: ${data.error}`);
+      }
+    } catch (err) { alert(`Erro: ${err.message}`); }
+    setRecording(false);
   }
 
   function addStep() {
@@ -84,13 +198,9 @@ export default function NovoGuia() {
     if (!form.title) return alert("Informe o título.");
     setSaving(true);
     try {
-      const res = await fetch("/api/guias", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      if (res.ok) router.push("/admin/guias");
-      else alert(`Erro: ${(await res.json()).error}`);
+      const saved = await saveGuide();
+      if (saved) router.push("/admin/guias");
+      else alert("Erro ao salvar guia.");
     } catch (err) { alert(`Erro: ${err.message}`); }
     setSaving(false);
   }
@@ -119,18 +229,82 @@ export default function NovoGuia() {
     }
   }
 
+  const PIPELINE = [
+    { label: "Tema", done: !!form.title },
+    { label: "Conteúdo", done: !!form.content },
+    { label: "Passos", done: form.recording.steps.length > 0 },
+    { label: "Gravação", done: !!form.recording.videoUrl },
+  ];
+
   return (
     <>
       <div className={styles.pageHeader}>
         <h1 className={styles.pageTitle}>Novo Guia</h1>
-        <p className={styles.pageSubtitle}>Crie um guia para a plataforma AplicaAI</p>
+        <p className={styles.pageSubtitle}>Pipeline completo: Tema &rarr; Conteúdo &rarr; Gravação</p>
+      </div>
+
+      <div className={g.pipelineSteps}>
+        {PIPELINE.map((p, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center" }}>
+            {i > 0 && <span className={g.pipelineArrow}>&rarr;</span>}
+            <div className={g.pipelineStep} data-active={String(pipelineStep === i)} data-done={String(p.done && pipelineStep > i)}>
+              <span className={g.pipelineStepNumber}>{p.done && pipelineStep > i ? "\u2713" : i + 1}</span>
+              {p.label}
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className={g.tabs}>
-        {[{ id: "info", label: "Informações" }, { id: "content", label: "Conteúdo" }, { id: "recording", label: "Gravação" }].map((t) => (
+        {[
+          { id: "themes", label: "Temas" },
+          { id: "info", label: "Informações" },
+          { id: "content", label: "Conteúdo" },
+          { id: "recording", label: "Gravação" },
+        ].map((t) => (
           <button key={t.id} className={`${g.tab} ${tab === t.id ? g.tabActive : ""}`} onClick={() => setTab(t.id)}>{t.label}</button>
         ))}
       </div>
+
+      {tab === "themes" && (
+        <>
+          <div className={g.formSection}>
+            <div className={g.formSectionTitle}><span className={g.formSectionIcon}>💡</span> Gerador de Temas</div>
+            <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: 16 }}>
+              Gere sugestões de temas para guias automaticamente. Clique em um tema para preencher o formulário.
+            </p>
+            <div className={g.themeFilters}>
+              <select className={styles.formSelect} value={themeCategory} onChange={(e) => setThemeCategory(e.target.value)} style={{ minWidth: 180 }}>
+                <option value="">Todas as categorias</option>
+                {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <select className={styles.formSelect} value={themeTool} onChange={(e) => setThemeTool(e.target.value)} style={{ minWidth: 140 }}>
+                <option value="">Todas as ferramentas</option>
+                {TOOLS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <button className={g.generateBtn} onClick={handleGenerateThemes} disabled={themesLoading} style={{ padding: "8px 20px", fontSize: "0.8rem" }}>
+                {themesLoading ? <><span className={g.generateBtnSpin}>💡</span> Gerando...</> : <>💡 Gerar Temas</>}
+              </button>
+            </div>
+
+            {themes.length > 0 && (
+              <div className={g.themeGrid}>
+                {themes.map((theme, idx) => (
+                  <div key={idx} className={g.themeCard} onClick={() => selectTheme(theme)}>
+                    <div className={g.themeCardTitle}>{theme.title}</div>
+                    <div className={g.themeCardDesc}>{theme.description}</div>
+                    <div className={g.themeCardMeta}>
+                      <span className={g.themeCardTag}>{theme.tool}</span>
+                      <span className={g.themeCardTag}>{theme.difficulty}</span>
+                      {theme.categories?.map((c) => <span key={c} className={g.themeCardTag}>{c}</span>)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {tab === "info" && (
         <>
@@ -282,10 +456,22 @@ export default function NovoGuia() {
       {tab === "recording" && (
         <>
           <div className={g.formSection}>
-            <div className={g.formSectionTitle}><span className={g.formSectionIcon}>🎬</span> Passos de Gravação (Agente)</div>
+            <div className={g.formSectionTitle}><span className={g.formSectionIcon}>🎬</span> Passos de Gravação (Agente Automatizado)</div>
             <p style={{ fontSize: "0.85rem", color: "var(--text-secondary)", marginBottom: 16 }}>
-              Configure os passos que o agente deve executar para gravar o guia. Ele navega, clica, digita e captura tela automaticamente.
+              Configure os passos que o agente deve executar para gravar o guia. Gere automaticamente a partir do conteúdo ou adicione manualmente.
             </p>
+
+            <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+              <button className={g.generateStepsBtn} onClick={handleGenerateSteps} disabled={generatingSteps || !form.content}>
+                {generatingSteps ? <><span className={g.generateBtnSpin}>🤖</span> Gerando Passos...</> : <>🤖 Gerar Passos Automaticamente</>}
+              </button>
+              {form.recording.steps.length > 0 && (
+                <button className={g.generateBtn} onClick={handleRecord} disabled={recording} style={{ background: "linear-gradient(135deg, #10B981, #059669)" }}>
+                  {recording ? <><span className={g.generateBtnSpin}>🎬</span> Gravando...</> : <>🎬 Salvar e Gravar</>}
+                </button>
+              )}
+            </div>
+
             <div className={g.stepsList}>
               {form.recording.steps.map((step, idx) => (
                 <div key={idx} className={g.stepItem}>
@@ -294,21 +480,30 @@ export default function NovoGuia() {
                     {STEP_ACTIONS.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
                   </select>
                   {stepFields(step, idx)}
-                  <button className={g.stepRemove} onClick={() => removeStep(idx)}>✕</button>
+                  <button className={g.stepRemove} onClick={() => removeStep(idx)}>&#x2715;</button>
                 </div>
               ))}
             </div>
             <button className={g.addStepBtn} onClick={addStep}>+ Adicionar Passo</button>
+
+            {form.recording.steps.length > 0 && (
+              <div style={{ marginTop: 16, padding: 12, background: "var(--bg-secondary)", borderRadius: 8, fontSize: "0.8rem", color: "var(--text-secondary)" }}>
+                <strong>{form.recording.steps.length}</strong> passo(s) configurado(s).
+                {form.recording.steps.filter((s) => s.description).map((s, i) => (
+                  <div key={i} style={{ marginTop: 4 }}>&#x2022; {s.description}</div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className={g.formSection}>
-            <div className={g.formSectionTitle}><span className={g.formSectionIcon}>ℹ️</span> Como funciona</div>
+            <div className={g.formSectionTitle}><span className={g.formSectionIcon}>ℹ️</span> Como funciona o Pipeline</div>
             <div style={{ fontSize: "0.85rem", color: "var(--text-secondary)", lineHeight: 1.7 }}>
-              <p style={{ marginBottom: 8 }}>O sistema usa Playwright para executar os passos automaticamente e gravar a tela.</p>
-              <p style={{ marginBottom: 8 }}><strong>1.</strong> Configure os passos de navegação acima</p>
-              <p style={{ marginBottom: 8 }}><strong>2.</strong> Salve o guia</p>
-              <p style={{ marginBottom: 8 }}><strong>3.</strong> Na lista, clique em &quot;Gravar&quot; para iniciar</p>
-              <p><strong>4.</strong> O vídeo será gerado e anexado ao guia</p>
+              <p style={{ marginBottom: 8 }}><strong>1. Gerar Temas</strong> — A IA sugere temas de guias baseados em categorias e ferramentas</p>
+              <p style={{ marginBottom: 8 }}><strong>2. Gerar Conteúdo</strong> — O conteúdo do guia é gerado automaticamente (7 seções padrão)</p>
+              <p style={{ marginBottom: 8 }}><strong>3. Gerar Passos</strong> — Os passos de gravação são criados a partir do conteúdo do guia</p>
+              <p style={{ marginBottom: 8 }}><strong>4. Gravar</strong> — O Playwright executa os passos e grava a tela automaticamente</p>
+              <p><strong>5. Download</strong> — O vídeo fica disponível para download e publicação</p>
             </div>
           </div>
         </>

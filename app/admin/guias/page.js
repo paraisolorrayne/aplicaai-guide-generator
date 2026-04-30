@@ -29,7 +29,7 @@ export default function AdminGuias() {
 
   async function handleRecord(guide) {
     if (!guide.recording?.steps?.length) {
-      alert("Adicione passos de gravação antes.");
+      alert("Adicione passos de gravação antes (edite o guia e gere os passos automaticamente).");
       return;
     }
     setRecording(guide.id);
@@ -40,7 +40,7 @@ export default function AdminGuias() {
         body: JSON.stringify({ guideId: guide.id }),
       });
       const data = await res.json();
-      alert(data.success ? "Gravação concluída!" : `Erro: ${data.error}`);
+      alert(data.success ? "Gravação concluída! Vídeo disponível para download." : `Erro: ${data.error}`);
       fetchGuides();
     } catch (err) {
       alert(`Erro: ${err.message}`);
@@ -60,7 +60,7 @@ export default function AdminGuias() {
         <div className={g.headerRow}>
           <div>
             <h1 className={styles.pageTitle}>Guias</h1>
-            <p className={styles.pageSubtitle}>Crie e gerencie guias da AplicaAI</p>
+            <p className={styles.pageSubtitle}>Pipeline: Tema &rarr; Conteúdo &rarr; Gravação &rarr; Publicação</p>
           </div>
           <Link href="/admin/guias/novo" className={styles.btnPrimary}>+ Novo Guia</Link>
         </div>
@@ -76,8 +76,8 @@ export default function AdminGuias() {
           <div className={styles.statValue}>{guides.filter((gu) => gu.recording?.videoUrl).length}</div>
         </div>
         <div className={styles.statCard}>
-          <div className={styles.statLabel}>Categorias</div>
-          <div className={styles.statValue}>{categories.length}</div>
+          <div className={styles.statLabel}>Com Conteúdo</div>
+          <div className={styles.statValue}>{guides.filter((gu) => gu.content).length}</div>
         </div>
         <div className={styles.statCard}>
           <div className={styles.statLabel}>Novos</div>
@@ -110,6 +110,8 @@ export default function AdminGuias() {
                 <div className={g.guideBadges}>
                   {guide.isNew && <span className={g.badgeNew}>NOVO</span>}
                   <span className={g.badgeDifficulty}>{guide.difficulty}</span>
+                  {guide.content && <span className={g.badgeDifficulty} style={{ background: "#dcfce7", color: "#166534" }}>Conteúdo</span>}
+                  {guide.recording?.steps?.length > 0 && <span className={g.badgeDifficulty} style={{ background: "#fef3c7", color: "#92400e" }}>{guide.recording.steps.length} passos</span>}
                 </div>
                 <span className={g.statusDot} data-status={guide.recording?.status || "pending"} title={guide.recording?.status || "pending"} />
               </div>
@@ -127,6 +129,11 @@ export default function AdminGuias() {
                 <button onClick={() => handleRecord(guide)} className={styles.btnAccent} style={{ fontSize: "0.8rem", padding: "6px 12px" }} disabled={recording === guide.id}>
                   {recording === guide.id ? "Gravando..." : "Gravar"}
                 </button>
+                {guide.recording?.videoUrl && (
+                  <a href={`/api/guias/${guide.id}/video`} className={styles.btnPrimary} style={{ fontSize: "0.8rem", padding: "6px 12px", textDecoration: "none" }} download>
+                    ⬇ Baixar
+                  </a>
+                )}
                 <button onClick={() => handleDelete(guide.id)} className={styles.btnDanger} style={{ fontSize: "0.8rem", padding: "6px 12px" }}>Excluir</button>
               </div>
             </div>
