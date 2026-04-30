@@ -31,7 +31,7 @@ const TOOL_SELECTORS = {
 };
 
 function generateStepsFromContent(guide) {
-  const tool = guide.tools?.[0] || "ChatGPT";
+  const tool = guide.tool || guide.tools?.[0] || "ChatGPT";
   const toolUrl = TOOL_URLS[tool] || "https://chat.openai.com";
   const selectors = TOOL_SELECTORS[tool] || TOOL_SELECTORS.ChatGPT;
   const content = guide.content || {};
@@ -215,7 +215,7 @@ export async function POST(request) {
     const apiKey = process.env.OPENAI_API_KEY;
 
     if (apiKey && guide.content) {
-      const tool = guide.tools?.[0] || "ChatGPT";
+      const tool = guide.tool || guide.tools?.[0] || "ChatGPT";
       const toolUrl = TOOL_URLS[tool] || "https://chat.openai.com";
       const selectors = TOOL_SELECTORS[tool] || TOOL_SELECTORS.ChatGPT;
 
