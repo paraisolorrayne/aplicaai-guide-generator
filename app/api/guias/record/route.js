@@ -4,8 +4,9 @@ import { join } from "path";
 
 function generatePlaywrightScript(steps, recordDir) {
   const stepsJson = JSON.stringify(steps, null, 2);
+  const playwrightPath = join(process.cwd(), "node_modules", "playwright", "index.mjs");
   return `
-import { chromium } from 'playwright';
+import { chromium } from ${JSON.stringify(playwrightPath)};
 import { mkdirSync, existsSync } from 'fs';
 
 const steps = ${stepsJson};
@@ -94,9 +95,11 @@ async function runRecording(guideId, steps) {
   fs.writeFileSync(scriptFile, generatePlaywrightScript(steps, tempDir), "utf-8");
 
   const command = "node " + JSON.stringify(scriptFile);
+  const cwd = process.cwd();
+  const env = { ...process.env, NODE_PATH: join(cwd, "node_modules") };
 
   return new Promise((resolve, reject) => {
-    exec(command, { timeout: 180000 }, (error, stdout, stderr) => {
+    exec(command, { timeout: 180000, cwd, env }, (error, stdout, stderr) => {
       const output = (stdout || "") + (stderr || "");
       const videoMatch = output.match(/VIDEO_PATH:(.+)/);
 
