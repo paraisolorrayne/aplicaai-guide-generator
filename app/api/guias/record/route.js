@@ -189,12 +189,24 @@ async function runRecording(guideId, steps) {
       const output = (stdout || "") + (stderr || "");
       const videoMatch = output.match(/VIDEO_PATH:(.+)/);
 
-      if (videoMatch) {
+      if (!error && videoMatch) {
         const videoSrc = videoMatch[1].trim();
         const fileName = guideId + "-" + Date.now() + ".webm";
         const destPath = join(recordingsDir, fileName);
-        try { fs.copyFileSync(videoSrc, destPath); } catch { /* ok */ }
+        try {
+          fs.copyFileSync(videoSrc, destPath);
+          const stat = fs.statSync(destPath);
+          if (stat.size < 1000) {
+            resolve({ videoUrl: null, output: output + "\nVideo file too small, likely corrupted." });
+            return;
+          }
+        } catch (copyErr) {
+          resolve({ videoUrl: null, output: output + "\nFailed to copy video: " + copyErr.message });
+          return;
+        }
         resolve({ videoUrl: "/recordings/" + fileName, output });
+      } else if (error && videoMatch) {
+        resolve({ videoUrl: null, output: "Recording exited with error; video may be corrupted. " + output.slice(-500) });
       } else if (!error) {
         resolve({ videoUrl: null, output });
       } else {
