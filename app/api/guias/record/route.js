@@ -121,6 +121,7 @@ async function record() {
     await new Promise(r => setTimeout(r, 1000));
     console.log('VIDEO_PATH:' + videoPath);
     await page.close();
+    await browser.close();
   } else if (isOwnBrowser) {
     const video = page.video();
     await page.close();

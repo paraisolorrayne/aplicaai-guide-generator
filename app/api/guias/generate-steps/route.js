@@ -60,9 +60,10 @@ function generateStepsFromContent(guide) {
 
   const useCases = content.useCases || [];
   const howToSteps = content.howToImplement?.steps || [];
+  const firstCommand = useCases[0]?.command || howToSteps[0]?.description || guide.title;
+  const usedFirstUseCase = useCases.length > 0 && firstCommand === useCases[0]?.command;
 
   if (useCases.length > 0 || howToSteps.length > 0) {
-    const firstCommand = useCases[0]?.command || `${howToSteps[0]?.description || guide.title}`;
 
     steps.push({
       action: "click",
@@ -100,7 +101,8 @@ function generateStepsFromContent(guide) {
     });
   }
 
-  for (let i = 0; i < Math.min(useCases.length, 3); i++) {
+  const useCaseStart = usedFirstUseCase ? 1 : 0;
+  for (let i = useCaseStart; i < Math.min(useCases.length, 3 + useCaseStart); i++) {
     const uc = useCases[i];
     const commandText = uc.command || uc.description || `Demonstrar: ${uc.title}`;
 
