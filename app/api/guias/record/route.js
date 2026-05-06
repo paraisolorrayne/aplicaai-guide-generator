@@ -2,30 +2,73 @@ import { getGuideById, updateGuide } from "@/data/guides";
 import { tmpdir } from "os";
 import { join } from "path";
 
-function generatePlaywrightScript(steps, recordDir) {
+function generatePlaywrightScript(steps, recordDir, options = {}) {
   const stepsJson = JSON.stringify(steps, null, 2);
   const playwrightPath = join(process.cwd(), "node_modules", "playwright", "index.mjs");
+  const useCdp = options.cdpUrl ? "true" : "false";
+  const cdpUrl = options.cdpUrl || "";
+
   return `
 import { chromium } from ${JSON.stringify(playwrightPath)};
 import { mkdirSync, existsSync } from 'fs';
+import { execSync, spawn } from 'child_process';
 
 const steps = ${stepsJson};
 const recordDir = ${JSON.stringify(recordDir)};
+const useCdp = ${useCdp};
+const cdpUrl = ${JSON.stringify(cdpUrl)};
+const videoPath = recordDir + '/recording.webm';
 
 if (!existsSync(recordDir)) mkdirSync(recordDir, { recursive: true });
 
 async function record() {
-  const browser = await chromium.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-  });
-  const context = await browser.newContext({
-    recordVideo: { dir: recordDir, size: { width: 1280, height: 720 } },
-    viewport: { width: 1280, height: 720 },
-    locale: 'pt-BR',
-    timezoneId: 'America/Sao_Paulo',
-  });
-  const page = await context.newPage();
+  let browser, context, page, isOwnBrowser = false;
+  let ffmpegProcess = null;
+
+  if (useCdp) {
+    try {
+      browser = await chromium.connectOverCDP(cdpUrl);
+      const contexts = browser.contexts();
+      context = contexts[0] || await browser.newContext({
+        viewport: { width: 1280, height: 720 },
+        locale: 'pt-BR',
+        timezoneId: 'America/Sao_Paulo',
+      });
+      page = await context.newPage();
+      console.log('Connected to Chrome via CDP');
+
+      // Start screen recording via ffmpeg x11grab
+      ffmpegProcess = spawn('ffmpeg', [
+        '-y', '-f', 'x11grab', '-framerate', '10',
+        '-video_size', '1280x720', '-i', ':0.0',
+        '-c:v', 'libvpx', '-b:v', '1M', '-an',
+        videoPath
+      ], { stdio: ['pipe', 'pipe', 'pipe'] });
+
+      // Give ffmpeg time to start
+      await new Promise(r => setTimeout(r, 1000));
+      console.log('Screen recording started');
+    } catch (err) {
+      console.error('CDP connection failed, falling back to headless:', err.message);
+      if (ffmpegProcess) { ffmpegProcess.kill('SIGINT'); ffmpegProcess = null; }
+    }
+  }
+
+  if (!page) {
+    isOwnBrowser = true;
+    browser = await chromium.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
+    context = await browser.newContext({
+      recordVideo: { dir: recordDir, size: { width: 1280, height: 720 } },
+      viewport: { width: 1280, height: 720 },
+      locale: 'pt-BR',
+      timezoneId: 'America/Sao_Paulo',
+    });
+    page = await context.newPage();
+    console.log('Using headless browser with video recording');
+  }
 
   for (const step of steps) {
     try {
@@ -56,12 +99,13 @@ async function record() {
         case 'press':
           await page.keyboard.press(step.key || 'Enter');
           break;
-        case 'screenshot':
+        case 'screenshot': {
           const screenshotPath = step.path
             ? (step.path.startsWith('/') ? step.path : recordDir + '/' + step.path)
             : recordDir + '/screenshot-' + Date.now() + '.png';
           await page.screenshot({ path: screenshotPath });
           break;
+        }
       }
       await new Promise(r => setTimeout(r, step.pauseAfter || 1500));
     } catch (err) {
@@ -69,12 +113,22 @@ async function record() {
     }
   }
 
-  const video = page.video();
-  await page.close();
-  await context.close();
-  const videoPath = await video.path();
-  console.log('VIDEO_PATH:' + videoPath);
-  await browser.close();
+  // Stop recording
+  if (ffmpegProcess) {
+    ffmpegProcess.stdin.write('q');
+    await new Promise(r => setTimeout(r, 2000));
+    ffmpegProcess.kill('SIGINT');
+    await new Promise(r => setTimeout(r, 1000));
+    console.log('VIDEO_PATH:' + videoPath);
+    await page.close();
+  } else if (isOwnBrowser) {
+    const video = page.video();
+    await page.close();
+    await context.close();
+    const recordedPath = await video.path();
+    console.log('VIDEO_PATH:' + recordedPath);
+    await browser.close();
+  }
 }
 
 record().catch(console.error);
@@ -88,22 +142,23 @@ async function runRecording(guideId, steps) {
   const recordingsDir = join(process.cwd(), "public", "recordings");
   if (!fs.existsSync(recordingsDir)) fs.mkdirSync(recordingsDir, { recursive: true });
 
-  const tempDir = join(tmpdir(), "guia-record-" + guideId);
+  const tempDir = join(tmpdir(), "guia-record-" + guideId + "-" + Date.now());
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
+  const cdpUrl = "http://localhost:29229";
   const scriptFile = join(tempDir, "record-script.mjs");
-  fs.writeFileSync(scriptFile, generatePlaywrightScript(steps, tempDir), "utf-8");
+  fs.writeFileSync(scriptFile, generatePlaywrightScript(steps, tempDir, { cdpUrl }), "utf-8");
 
   const command = "node " + JSON.stringify(scriptFile);
   const cwd = process.cwd();
-  const env = { ...process.env, NODE_PATH: join(cwd, "node_modules") };
+  const env = { ...process.env, NODE_PATH: join(cwd, "node_modules"), DISPLAY: ":0" };
 
   return new Promise((resolve, reject) => {
-    exec(command, { timeout: 180000, cwd, env }, (error, stdout, stderr) => {
+    exec(command, { timeout: 300000, cwd, env }, (error, stdout, stderr) => {
       const output = (stdout || "") + (stderr || "");
       const videoMatch = output.match(/VIDEO_PATH:(.+)/);
 
-      if (!error && videoMatch) {
+      if (videoMatch) {
         const videoSrc = videoMatch[1].trim();
         const fileName = guideId + "-" + Date.now() + ".webm";
         const destPath = join(recordingsDir, fileName);

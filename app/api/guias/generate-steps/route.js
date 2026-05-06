@@ -28,6 +28,14 @@ const TOOL_SELECTORS = {
     input: 'textarea, div[contenteditable="true"]',
     send: 'button[aria-label="Submit"]',
   },
+  "Google AI Studio": {
+    input: 'div[contenteditable="true"], textarea, .prompt-input',
+    send: 'button[aria-label="Run"], button.run-button',
+  },
+  Lovable: {
+    input: 'textarea, div[contenteditable="true"]',
+    send: 'button[type="submit"], button:has(svg)',
+  },
 };
 
 function generateStepsFromContent(guide) {
@@ -53,9 +61,8 @@ function generateStepsFromContent(guide) {
   const useCases = content.useCases || [];
   const howToSteps = content.howToImplement?.steps || [];
 
-  if (howToSteps.length > 0) {
-    const firstStep = howToSteps[0];
-    const introPrompt = `Vou demonstrar: ${guide.title}\n\nPasso 1: ${firstStep.title}\n${firstStep.description}`;
+  if (useCases.length > 0 || howToSteps.length > 0) {
+    const firstCommand = useCases[0]?.command || `${howToSteps[0]?.description || guide.title}`;
 
     steps.push({
       action: "click",
@@ -67,7 +74,7 @@ function generateStepsFromContent(guide) {
     steps.push({
       action: "type",
       selector: selectors.input,
-      text: introPrompt,
+      text: firstCommand,
       description: "Digitar contexto inicial do guia",
       pauseAfter: 1500,
     });
