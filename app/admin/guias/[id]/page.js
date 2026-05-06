@@ -187,7 +187,7 @@ export default function EditGuia({ params }) {
           <div className={g.formSection}>
             <div className={g.formSectionTitle}>Ferramentas</div>
             <div className={g.checkboxGrid}>
-              {TOOLS.map((tool) => <div key={tool} className={`${g.checkboxItem} ${form.tools?.includes(tool) ? g.checkboxItemActive : ""}`} onClick={() => toggle("tools", tool)}><input type="checkbox" checked={form.tools?.includes(tool) || false} readOnly /> {tool}</div>)}
+              {TOOLS.map((t) => <div key={t} className={`${g.checkboxItem} ${form.tools?.includes(t) ? g.checkboxItemActive : ""}`} onClick={() => { toggle("tools", t); if (!form.tools?.includes(t)) set("tool", t); else if (form.tool === t) set("tool", (form.tools || []).filter((x) => x !== t)[0] || ""); }}><input type="checkbox" checked={form.tools?.includes(t) || false} readOnly /> {t}</div>)}
             </div>
           </div>
           <div className={g.formSection}>

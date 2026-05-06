@@ -2,29 +2,73 @@ import { getGuideById, updateGuide } from "@/data/guides";
 import { tmpdir } from "os";
 import { join } from "path";
 
-function generatePlaywrightScript(steps, recordDir) {
+function generatePlaywrightScript(steps, recordDir, options = {}) {
   const stepsJson = JSON.stringify(steps, null, 2);
+  const playwrightPath = join(process.cwd(), "node_modules", "playwright", "index.mjs");
+  const useCdp = options.cdpUrl ? "true" : "false";
+  const cdpUrl = options.cdpUrl || "";
+
   return `
-import { chromium } from 'playwright';
+import { chromium } from ${JSON.stringify(playwrightPath)};
 import { mkdirSync, existsSync } from 'fs';
+import { execSync, spawn } from 'child_process';
 
 const steps = ${stepsJson};
 const recordDir = ${JSON.stringify(recordDir)};
+const useCdp = ${useCdp};
+const cdpUrl = ${JSON.stringify(cdpUrl)};
+const videoPath = recordDir + '/recording.webm';
 
 if (!existsSync(recordDir)) mkdirSync(recordDir, { recursive: true });
 
 async function record() {
-  const browser = await chromium.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-  });
-  const context = await browser.newContext({
-    recordVideo: { dir: recordDir, size: { width: 1280, height: 720 } },
-    viewport: { width: 1280, height: 720 },
-    locale: 'pt-BR',
-    timezoneId: 'America/Sao_Paulo',
-  });
-  const page = await context.newPage();
+  let browser, context, page, isOwnBrowser = false;
+  let ffmpegProcess = null;
+
+  if (useCdp) {
+    try {
+      browser = await chromium.connectOverCDP(cdpUrl);
+      const contexts = browser.contexts();
+      context = contexts[0] || await browser.newContext({
+        viewport: { width: 1280, height: 720 },
+        locale: 'pt-BR',
+        timezoneId: 'America/Sao_Paulo',
+      });
+      page = await context.newPage();
+      console.log('Connected to Chrome via CDP');
+
+      // Start screen recording via ffmpeg x11grab
+      ffmpegProcess = spawn('ffmpeg', [
+        '-y', '-f', 'x11grab', '-framerate', '10',
+        '-video_size', '1280x720', '-i', ':0.0',
+        '-c:v', 'libvpx', '-b:v', '1M', '-an',
+        videoPath
+      ], { stdio: ['pipe', 'pipe', 'pipe'] });
+
+      // Give ffmpeg time to start
+      await new Promise(r => setTimeout(r, 1000));
+      console.log('Screen recording started');
+    } catch (err) {
+      console.error('CDP connection failed, falling back to headless:', err.message);
+      if (ffmpegProcess) { ffmpegProcess.kill('SIGINT'); ffmpegProcess = null; }
+    }
+  }
+
+  if (!page) {
+    isOwnBrowser = true;
+    browser = await chromium.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
+    context = await browser.newContext({
+      recordVideo: { dir: recordDir, size: { width: 1280, height: 720 } },
+      viewport: { width: 1280, height: 720 },
+      locale: 'pt-BR',
+      timezoneId: 'America/Sao_Paulo',
+    });
+    page = await context.newPage();
+    console.log('Using headless browser with video recording');
+  }
 
   for (const step of steps) {
     try {
@@ -36,8 +80,13 @@ async function record() {
           });
           break;
         case 'click':
-          await page.click(step.selector, { timeout: 10000 }).catch(() => {
-            console.log('Click failed for:', step.selector);
+          await page.click(step.selector, { timeout: 10000 }).catch(async () => {
+            if (step.fallbackAction === 'click_coordinates' && step.fallbackX && step.fallbackY) {
+              console.log('Click selector failed, using fallback coordinates:', step.fallbackX, step.fallbackY);
+              await page.mouse.click(step.fallbackX, step.fallbackY);
+            } else {
+              console.log('Click failed for:', step.selector);
+            }
           });
           break;
         case 'type':
@@ -50,17 +99,43 @@ async function record() {
           await new Promise(r => setTimeout(r, step.duration || 2000));
           break;
         case 'scroll':
-          await page.evaluate((y) => window.scrollBy(0, y), step.distance || 300);
+          if (step.selector) {
+            await page.evaluate(({ sel, dist }) => {
+              const el = document.querySelector(sel);
+              if (el) el.scrollBy(0, dist);
+              else window.scrollBy(0, dist);
+            }, { sel: step.selector, dist: step.distance || 300 });
+          } else {
+            await page.evaluate((y) => window.scrollBy(0, y), step.distance || 300);
+          }
           break;
         case 'press':
           await page.keyboard.press(step.key || 'Enter');
           break;
-        case 'screenshot':
+        case 'keyboard_shortcut': {
+          const keys = step.keys || [];
+          if (keys.length >= 2) {
+            const modifiers = keys.slice(0, -1);
+            const key = keys[keys.length - 1];
+            for (const mod of modifiers) await page.keyboard.down(mod);
+            await page.keyboard.press(key);
+            for (const mod of modifiers.reverse()) await page.keyboard.up(mod);
+          }
+          break;
+        }
+        case 'click_coordinates': {
+          const x = step.x || step.fallbackX || 640;
+          const y = step.y || step.fallbackY || 360;
+          await page.mouse.click(x, y);
+          break;
+        }
+        case 'screenshot': {
           const screenshotPath = step.path
             ? (step.path.startsWith('/') ? step.path : recordDir + '/' + step.path)
             : recordDir + '/screenshot-' + Date.now() + '.png';
           await page.screenshot({ path: screenshotPath });
           break;
+        }
       }
       await new Promise(r => setTimeout(r, step.pauseAfter || 1500));
     } catch (err) {
@@ -68,12 +143,23 @@ async function record() {
     }
   }
 
-  const video = page.video();
-  await page.close();
-  await context.close();
-  const videoPath = await video.path();
-  console.log('VIDEO_PATH:' + videoPath);
-  await browser.close();
+  // Stop recording
+  if (ffmpegProcess) {
+    ffmpegProcess.stdin.write('q');
+    await new Promise(r => setTimeout(r, 2000));
+    ffmpegProcess.kill('SIGINT');
+    await new Promise(r => setTimeout(r, 1000));
+    console.log('VIDEO_PATH:' + videoPath);
+    await page.close();
+    await browser.close();
+  } else if (isOwnBrowser) {
+    const video = page.video();
+    await page.close();
+    await context.close();
+    const recordedPath = await video.path();
+    console.log('VIDEO_PATH:' + recordedPath);
+    await browser.close();
+  }
 }
 
 record().catch(console.error);
@@ -87,16 +173,19 @@ async function runRecording(guideId, steps) {
   const recordingsDir = join(process.cwd(), "public", "recordings");
   if (!fs.existsSync(recordingsDir)) fs.mkdirSync(recordingsDir, { recursive: true });
 
-  const tempDir = join(tmpdir(), "guia-record-" + guideId);
+  const tempDir = join(tmpdir(), "guia-record-" + guideId + "-" + Date.now());
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
+  const cdpUrl = "http://localhost:29229";
   const scriptFile = join(tempDir, "record-script.mjs");
-  fs.writeFileSync(scriptFile, generatePlaywrightScript(steps, tempDir), "utf-8");
+  fs.writeFileSync(scriptFile, generatePlaywrightScript(steps, tempDir, { cdpUrl }), "utf-8");
 
   const command = "node " + JSON.stringify(scriptFile);
+  const cwd = process.cwd();
+  const env = { ...process.env, NODE_PATH: join(cwd, "node_modules"), DISPLAY: ":0" };
 
   return new Promise((resolve, reject) => {
-    exec(command, { timeout: 180000 }, (error, stdout, stderr) => {
+    exec(command, { timeout: 300000, cwd, env }, (error, stdout, stderr) => {
       const output = (stdout || "") + (stderr || "");
       const videoMatch = output.match(/VIDEO_PATH:(.+)/);
 
@@ -104,8 +193,20 @@ async function runRecording(guideId, steps) {
         const videoSrc = videoMatch[1].trim();
         const fileName = guideId + "-" + Date.now() + ".webm";
         const destPath = join(recordingsDir, fileName);
-        try { fs.copyFileSync(videoSrc, destPath); } catch { /* ok */ }
+        try {
+          fs.copyFileSync(videoSrc, destPath);
+          const stat = fs.statSync(destPath);
+          if (stat.size < 1000) {
+            resolve({ videoUrl: null, output: output + "\nVideo file too small, likely corrupted." });
+            return;
+          }
+        } catch (copyErr) {
+          resolve({ videoUrl: null, output: output + "\nFailed to copy video: " + copyErr.message });
+          return;
+        }
         resolve({ videoUrl: "/recordings/" + fileName, output });
+      } else if (error && videoMatch) {
+        resolve({ videoUrl: null, output: "Recording exited with error; video may be corrupted. " + output.slice(-500) });
       } else if (!error) {
         resolve({ videoUrl: null, output });
       } else {

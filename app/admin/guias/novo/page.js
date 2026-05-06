@@ -83,6 +83,7 @@ export default function NovoGuia() {
       description: theme.description,
       difficulty: theme.difficulty || p.difficulty,
       categories: theme.categories || p.categories,
+      tool: theme.tool || "",
       tools: theme.tool ? [theme.tool] : p.tools,
     }));
     setTab("info");
@@ -296,6 +297,11 @@ export default function NovoGuia() {
                     <div className={g.themeCardMeta}>
                       <span className={g.themeCardTag}>{theme.tool}</span>
                       <span className={g.themeCardTag}>{theme.difficulty}</span>
+                      {theme.recordable !== undefined && (
+                        <span className={g.themeCardTag} style={{ background: theme.recordable ? "#dcfce7" : "#fef9c3", color: theme.recordable ? "#166534" : "#854d0e" }}>
+                          {theme.recordable ? "Gravável" : "Requer login"}
+                        </span>
+                      )}
                       {theme.categories?.map((c) => <span key={c} className={g.themeCardTag}>{c}</span>)}
                     </div>
                   </div>
@@ -345,9 +351,13 @@ export default function NovoGuia() {
           <div className={g.formSection}>
             <div className={g.formSectionTitle}><span className={g.formSectionIcon}>🛠</span> Ferramentas</div>
             <div className={g.checkboxGrid}>
-              {TOOLS.map((tool) => (
-                <div key={tool} className={`${g.checkboxItem} ${form.tools.includes(tool) ? g.checkboxItemActive : ""}`} onClick={() => toggle("tools", tool)}>
-                  <input type="checkbox" checked={form.tools.includes(tool)} readOnly /> {tool}
+              {TOOLS.map((t) => (
+                <div key={t} className={`${g.checkboxItem} ${form.tools.includes(t) ? g.checkboxItemActive : ""}`} onClick={() => {
+                  toggle("tools", t);
+                  if (!form.tools.includes(t)) set("tool", t);
+                  else if (form.tool === t) set("tool", form.tools.filter((x) => x !== t)[0] || "");
+                }}>
+                  <input type="checkbox" checked={form.tools.includes(t)} readOnly /> {t}
                 </div>
               ))}
             </div>
