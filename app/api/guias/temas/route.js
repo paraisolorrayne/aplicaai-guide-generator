@@ -148,10 +148,12 @@ function generateFallbackThemes(filters) {
     // === Google Gemini ===
     {
       title: "Como usar o Google Gemini para analisar planilhas",
-      description: "Transforme dados brutos em insights acionáveis usando o Google Gemini.",
+      description: "Transforme dados brutos em insights acionáveis usando o Gemini integrado ao Google Planilhas.",
       tool: "Google Gemini",
       difficulty: "Iniciante",
       categories: ["Análise de Dados", "Produtividade & Automação"],
+      workflow: "gemini-sheets",
+      requiresLogin: true,
     },
     {
       title: "Como usar o Google Gemini para pesquisar tendências de mercado",
@@ -180,6 +182,8 @@ function generateFallbackThemes(filters) {
       tool: "Google Gemini",
       difficulty: "Iniciante",
       categories: ["Produtividade & Automação"],
+      workflow: "gemini-gmail",
+      requiresLogin: true,
     },
     {
       title: "Como usar o Gemini integrado ao Google Workspace",
@@ -187,6 +191,8 @@ function generateFallbackThemes(filters) {
       tool: "Google Gemini",
       difficulty: "Intermediário",
       categories: ["Produtividade & Automação"],
+      workflow: "gemini-workspace",
+      requiresLogin: true,
     },
     // === Google AI Studio ===
     {
@@ -298,11 +304,19 @@ function generateFallbackThemes(filters) {
 
   const count = filters.count ? Math.min(parseInt(filters.count) || 5, 15) : 5;
   const shuffled = filtered.sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, count).map((t) => ({
-    ...t,
-    toolUrl: TOOL_URLS[t.tool] || "",
-    recordable: TOOL_RECORDING_STATUS[t.tool]?.recordable ?? false,
-  }));
+  return shuffled.slice(0, count).map((t) => {
+    const toolStatus = TOOL_RECORDING_STATUS[t.tool] || {};
+    const needsLogin = t.requiresLogin || !toolStatus.recordable;
+    return {
+      ...t,
+      toolUrl: TOOL_URLS[t.tool] || "",
+      recordable: !needsLogin,
+      workflow: t.workflow || "default",
+      recordingNotes: needsLogin
+        ? (t.requiresLogin ? "Requer login Google (Sheets/Gmail/Docs)" : toolStatus.notes || "Requer login")
+        : toolStatus.notes || "Gravável sem login",
+    };
+  });
 }
 
 export async function POST(request) {

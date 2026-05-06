@@ -66,15 +66,29 @@ const TOOL_SPECIFIC_CONTENT = {
   "Google Gemini": {
     url: "https://gemini.google.com",
     useCases: [
-      { title: "Analisar planilhas e dados", command: "Analise esta planilha e me diga: 1) Tendências principais, 2) Anomalias nos dados, 3) Top 5 insights acionáveis, 4) Sugestões de melhoria.", result: "Relatório de análise com insights claros e recomendações." },
       { title: "Pesquisar tendências de mercado", command: "Quais são as 5 principais tendências de [seu setor] no Brasil em 2025? Para cada uma, inclua: descrição, impacto esperado e como aproveitar.", result: "Mapeamento de tendências com ações práticas." },
       { title: "Criar conteúdo integrado com Google", command: "Crie um plano de conteúdo mensal para [negócio] com 12 posts. Para cada post: tema, formato (carrossel/vídeo/texto), legenda e melhor dia para publicar.", result: "Plano de conteúdo completo para 30 dias." },
+      { title: "Resumir e organizar informações", command: "Resuma as principais informações sobre [tema] em formato de bullet points, organizadas por prioridade de implementação.", result: "Resumo estruturado e priorizado pronto para ação." },
     ],
     tips: [
       "Use a integração com Google Drive para analisar planilhas diretamente do Sheets.",
       "Ative as extensões do Gemini para acessar dados do Google Maps, YouTube e mais.",
       "Peça para criar gráficos e visualizações dos dados analisados.",
       "Use o Gemini para cruzar dados de múltiplas fontes Google automaticamente.",
+    ],
+  },
+  "Google Gemini Sheets": {
+    url: "https://sheets.google.com",
+    useCases: [
+      { title: "Identificar tendências nos dados", command: "Analise os dados desta planilha e identifique: 1) Tendências de crescimento, 2) Meses com melhor desempenho, 3) Correlações entre receita e número de clientes.", result: "Relatório com tendências e correlações identificadas nos dados da planilha." },
+      { title: "Encontrar anomalias e oportunidades", command: "Qual mês teve o melhor desempenho e por quê? Identifique anomalias nos dados e sugira ações para replicar os melhores resultados.", result: "Análise de anomalias com recomendações acionáveis baseadas nos dados reais." },
+      { title: "Gerar resumo executivo", command: "Crie um resumo executivo desses dados em formato de bullet points para apresentar à diretoria. Inclua métricas-chave, variações e recomendações.", result: "Resumo executivo profissional pronto para apresentação." },
+    ],
+    tips: [
+      "Abra o painel do Gemini diretamente no Google Sheets para analisar seus dados sem sair da planilha.",
+      "O Gemini consegue ler e interpretar os dados das suas células automaticamente.",
+      "Peça para o Gemini criar fórmulas complexas baseadas nos padrões que encontrou.",
+      "Use o Gemini para gerar gráficos e visualizações sugeridas a partir dos seus dados.",
     ],
   },
   "Google AI Studio": {
@@ -121,11 +135,26 @@ const TOOL_SPECIFIC_CONTENT = {
   },
 };
 
+function detectContentVariant(data) {
+  const tool = data.tool || data.tools?.[0] || "";
+  const title = (data.title || "").toLowerCase();
+  const description = (data.description || "").toLowerCase();
+  const text = title + " " + description;
+
+  if (tool === "Google Gemini") {
+    if (/planilha|spreadsheet|sheets|dados em planilha/i.test(text)) {
+      return "Google Gemini Sheets";
+    }
+  }
+  return tool;
+}
+
 function generateFallbackContent(data) {
   const tool = data.tool || data.tools?.[0] || "IA";
   const title = data.title || "Novo Guia";
   const topic = title.toLowerCase().replace(/^como\s+(usar\s+)?/i, "").replace(/^o\s+/i, "");
-  const toolContent = TOOL_SPECIFIC_CONTENT[tool];
+  const contentVariant = detectContentVariant(data);
+  const toolContent = TOOL_SPECIFIC_CONTENT[contentVariant] || TOOL_SPECIFIC_CONTENT[tool];
 
   const useCases = toolContent
     ? toolContent.useCases.map((uc) => ({ ...uc, result: uc.result }))
@@ -161,16 +190,30 @@ function generateFallbackContent(data) {
       },
     ],
     howToImplement: {
-      prerequisites: [
-        `${tool} (conta ativa${toolContent ? ` em ${toolContent.url}` : ""})`,
-        "Navegador web atualizado",
-      ],
-      steps: [
-        { number: 1, title: `Acessar o ${tool}`, description: `Abra ${toolContent ? toolContent.url : "a ferramenta"} e faça login na sua conta. Crie uma nova conversa.` },
-        { number: 2, title: "Definir o contexto", description: `Na primeira mensagem, defina o contexto: seu negócio, objetivo e público-alvo. Isso melhora todas as respostas seguintes.` },
-        { number: 3, title: "Executar os comandos", description: "Copie os comandos dos casos de uso abaixo, substitua os campos entre [colchetes] com suas informações e envie." },
-        { number: 4, title: "Iterar e refinar", description: "Peça ajustes nas respostas: 'simplifique', 'adicione mais detalhes no ponto 2', 'formate como tabela'. Cada iteração melhora o resultado." },
-      ],
+      prerequisites: contentVariant === "Google Gemini Sheets"
+        ? [
+            "Conta Google com acesso ao Google Planilhas (sheets.google.com)",
+            "Gemini ativado no Google Workspace (painel lateral)",
+            "Navegador web atualizado",
+          ]
+        : [
+            `${tool} (conta ativa${toolContent ? ` em ${toolContent.url}` : ""})`,
+            "Navegador web atualizado",
+          ],
+      steps: contentVariant === "Google Gemini Sheets"
+        ? [
+            { number: 1, title: "Abrir o Google Planilhas", description: "Acesse sheets.google.com e faça login na sua conta Google. Crie uma nova planilha ou abra uma existente com seus dados." },
+            { number: 2, title: "Inserir ou organizar seus dados", description: "Insira seus dados na planilha com cabeçalhos claros na primeira linha (ex: Mês, Receita, Despesas, Lucro). Quanto mais organizados, melhores os insights." },
+            { number: 3, title: "Abrir o painel do Gemini", description: "Clique no ícone do Gemini no canto superior direito da planilha para abrir o painel lateral de IA integrado." },
+            { number: 4, title: "Pedir análises ao Gemini", description: "No painel do Gemini, faça perguntas sobre seus dados. Use os comandos dos casos de uso abaixo, adaptando para os dados da sua planilha." },
+            { number: 5, title: "Aplicar as recomendações", description: "Use os insights do Gemini para tomar decisões. Peça para criar gráficos, fórmulas ou resumos executivos baseados na análise." },
+          ]
+        : [
+            { number: 1, title: `Acessar o ${tool}`, description: `Abra ${toolContent ? toolContent.url : "a ferramenta"} e faça login na sua conta. Crie uma nova conversa.` },
+            { number: 2, title: "Definir o contexto", description: `Na primeira mensagem, defina o contexto: seu negócio, objetivo e público-alvo. Isso melhora todas as respostas seguintes.` },
+            { number: 3, title: "Executar os comandos", description: "Copie os comandos dos casos de uso abaixo, substitua os campos entre [colchetes] com suas informações e envie." },
+            { number: 4, title: "Iterar e refinar", description: "Peça ajustes nas respostas: 'simplifique', 'adicione mais detalhes no ponto 2', 'formate como tabela'. Cada iteração melhora o resultado." },
+          ],
     },
     useCases,
     advancedTips: tips,

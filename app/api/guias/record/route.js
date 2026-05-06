@@ -80,8 +80,13 @@ async function record() {
           });
           break;
         case 'click':
-          await page.click(step.selector, { timeout: 10000 }).catch(() => {
-            console.log('Click failed for:', step.selector);
+          await page.click(step.selector, { timeout: 10000 }).catch(async () => {
+            if (step.fallbackAction === 'click_coordinates' && step.fallbackX && step.fallbackY) {
+              console.log('Click selector failed, using fallback coordinates:', step.fallbackX, step.fallbackY);
+              await page.mouse.click(step.fallbackX, step.fallbackY);
+            } else {
+              console.log('Click failed for:', step.selector);
+            }
           });
           break;
         case 'type':
@@ -94,11 +99,36 @@ async function record() {
           await new Promise(r => setTimeout(r, step.duration || 2000));
           break;
         case 'scroll':
-          await page.evaluate((y) => window.scrollBy(0, y), step.distance || 300);
+          if (step.selector) {
+            await page.evaluate(({ sel, dist }) => {
+              const el = document.querySelector(sel);
+              if (el) el.scrollBy(0, dist);
+              else window.scrollBy(0, dist);
+            }, { sel: step.selector, dist: step.distance || 300 });
+          } else {
+            await page.evaluate((y) => window.scrollBy(0, y), step.distance || 300);
+          }
           break;
         case 'press':
           await page.keyboard.press(step.key || 'Enter');
           break;
+        case 'keyboard_shortcut': {
+          const keys = step.keys || [];
+          if (keys.length >= 2) {
+            const modifiers = keys.slice(0, -1);
+            const key = keys[keys.length - 1];
+            for (const mod of modifiers) await page.keyboard.down(mod);
+            await page.keyboard.press(key);
+            for (const mod of modifiers.reverse()) await page.keyboard.up(mod);
+          }
+          break;
+        }
+        case 'click_coordinates': {
+          const x = step.x || step.fallbackX || 640;
+          const y = step.y || step.fallbackY || 360;
+          await page.mouse.click(x, y);
+          break;
+        }
         case 'screenshot': {
           const screenshotPath = step.path
             ? (step.path.startsWith('/') ? step.path : recordDir + '/' + step.path)
